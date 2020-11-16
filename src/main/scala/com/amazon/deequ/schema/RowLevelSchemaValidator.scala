@@ -327,7 +327,7 @@ object RowLevelSchemaValidator {
           val colAsInt = col(intDef.name).cast(IntegerType)
 
           /* null or successfully casted */
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsInt.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":DT,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsInt.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
 
           intDef.minValue.foreach { value =>
@@ -343,7 +343,7 @@ object RowLevelSchemaValidator {
         case decDef: DecimalColumnDefinition =>
 
           val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(col(decDef.name).cast(decType).isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":DT,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(col(decDef.name).cast(decType).isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case strDef: StringColumnDefinition =>
 
@@ -367,22 +367,22 @@ object RowLevelSchemaValidator {
           /* null or successfully casted */
           var maskQuoted = "'" + tsDef.mask + "'"
           nextCnf = nextCnf.concat(lit(when(colIsNull.or(unix_timestamp(col(tsDef.name), maskQuoted)
-            .cast(TimestampType).isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":DT,\"")).toString())
+            .cast(TimestampType).isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case floatDef: FloatColumnDefinition =>
           /* null or successfully casted */
           val colAsFloat = col(floatDef.name).cast(FloatType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsFloat.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":DT,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsFloat.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case doubleDef: DoubleColumnDefinition =>
           /* null or successfully casted */
           val colAsDouble = col(doubleDef.name).cast(DoubleType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsDouble.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":DT,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsDouble.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case booleanDef: BooleanColumnDefinition =>
           /* null or successfully casted */
           val colAsBoolean = col(booleanDef.name).cast(BooleanType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsBoolean.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":DT,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsBoolean.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
 
         case _ =>
