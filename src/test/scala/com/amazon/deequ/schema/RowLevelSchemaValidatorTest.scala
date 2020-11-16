@@ -1,18 +1,18 @@
 /**
-  * Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-  *
-  * Licensed under the Apache License, Version 2.0 (the "License"). You may not
-  * use this file except in compliance with the License. A copy of the License
-  * is located at
-  *
-  *     http://aws.amazon.com/apache2.0/
-  *
-  * or in the "license" file accompanying this file. This file is distributed on
-  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
-  * express or implied. See the License for the specific language governing
-  * permissions and limitations under the License.
-  *
-  */
+ * Copyright 2018 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"). You may not
+ * use this file except in compliance with the License. A copy of the License
+ * is located at
+ *
+ *     http://aws.amazon.com/apache2.0/
+ *
+ * or in the "license" file accompanying this file. This file is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing
+ * permissions and limitations under the License.
+ *
+ */
 
 package com.amazon.deequ.schema
 
@@ -32,15 +32,19 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
         ("123", "Product A", "2012-07-22 22:59:59"),
         ("N/A", "Product B", null),
         ("456", null, "2012-07-22 22:59:59"),
-        (null, "Product C", "2012-07-22 22:59:59")
+        (null, "Product C", "1231234213")
       ).toDF("id", "name", "event_time")
 
       val schema = RowLevelSchema()
-        .withIntColumn("id", isNullable = false)
+        .withIntColumn("id", isNullable = false,minValue=Some(12))
         .withStringColumn("name", maxLength = Some(10))
         .withTimestampColumn("event_time", mask = "yyyy-MM-dd HH:mm:ss", isNullable = false)
 
       val result = RowLevelSchemaValidator.validate(data, schema)
+
+      result.invalidRows.show(false)
+      result.validRows.show(false)
+
 
       assert(result.numValidRows == 2)
       val validIds = result.validRows.select("id").collect.map { _.getInt(0) }.toSet
@@ -97,11 +101,12 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
         null
       ).toDF("name")
 
+
       val schema = RowLevelSchema()
         .withStringColumn(name = "name", matches = Some("^[a-z0-9_\\-\\s]+$"))
-
       val result = RowLevelSchemaValidator.validate(data, schema)
-
+      result.validRows.show(false)
+      result.invalidRows.show(false)
       assert(result.numValidRows == 4)
       val validNames = result.validRows.select("name").collect.map { _.getString(0) }.toSet
       assert(validNames.size == result.numValidRows)
@@ -146,6 +151,89 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
       assert(result.invalidRows.count() == result.numInvalidRows)
     }
 
+    "correctly enforce Float constraints" in withSparkSession { sparkSession =>
+
+      import sparkSession.implicits._
+
+      val data = Seq(
+        "299.000",
+        "1295",
+        "###",
+        "-19.99",
+        "-99.99",
+        "n/a",
+        null
+      ).toDF("amount")
+
+      val schema = RowLevelSchema()
+        .withFloatColumn("amount", isNullable = false)
+
+      val result = RowLevelSchemaValidator.validate(data, schema)
+      result.invalidRows.show(false)
+      result.validRows.show(false)
+      assert(result.numValidRows == 4)
+      val validAmounts = result.validRows.collect().map { _.getFloat(0) }.toSet
+      assert(validAmounts.size == result.numValidRows)
+      assert(validAmounts.contains("299.00".toFloat))
+      assert(validAmounts.contains("1295.00".toFloat))
+      assert(validAmounts.contains("-19.99".toFloat))
+      assert(validAmounts.contains("-99.99".toFloat))
+      assert(result.numInvalidRows == 3)
+    }
+
+    "correctly enforce Double constraints" in withSparkSession { sparkSession =>
+
+      import sparkSession.implicits._
+
+      val data = Seq(
+        "299.000",
+        "1295",
+        "###",
+        "-19.99",
+        "-99.99",
+        "n/a",
+        null
+      ).toDF("amount")
+
+      val schema = RowLevelSchema()
+        .withDoubleColumn("amount", isNullable = false)
+
+      val result = RowLevelSchemaValidator.validate(data, schema)
+      result.invalidRows.show(false)
+      result.validRows.show(false)
+      assert(result.numValidRows == 4)
+      val validAmounts = result.validRows.collect().map { _.getDouble(0) }.toSet
+      assert(validAmounts.size == result.numValidRows)
+      assert(validAmounts.contains("299.00".toDouble))
+      assert(validAmounts.contains("1295.00".toDouble))
+      assert(validAmounts.contains("-19.99".toDouble))
+      assert(validAmounts.contains("-99.99".toDouble))
+      assert(result.numInvalidRows == 3)
+    }
+
+    "correctly enforce Boolean constraints" in withSparkSession { sparkSession =>
+
+      import sparkSession.implicits._
+
+      val data = Seq(
+        "True",
+        "true",
+        "###",
+        "0",
+        "1",
+        "false",
+        "False",
+        null
+      ).toDF("flag")
+
+      val schema = RowLevelSchema()
+        .withBooleanColumn("flag", isNullable = false)
+
+      val result = RowLevelSchemaValidator.validate(data, schema)
+      result.invalidRows.show(false)
+      result.validRows.show(false)
+    }
+
     "correctly enforce decimal constraints" in withSparkSession { sparkSession =>
 
       import sparkSession.implicits._
@@ -161,10 +249,11 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
       ).toDF("amount")
 
       val schema = RowLevelSchema()
-         .withDecimalColumn("amount", precision = 10, scale = 2, isNullable = false)
+        .withDecimalColumn("amount", precision = 10, scale = 2, isNullable = false)
 
       val result = RowLevelSchemaValidator.validate(data, schema)
-
+      result.invalidRows.show(false)
+      result.validRows.show(false)
       assert(result.numValidRows == 4)
       val validAmounts = result.validRows.collect().map { _.getDecimal(0) }.toSet
       assert(validAmounts.size == result.numValidRows)
