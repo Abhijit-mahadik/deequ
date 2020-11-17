@@ -17,7 +17,7 @@
 package com.amazon.deequ.schema
 
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{DataTypes, DecimalType, IntegerType, TimestampType,FloatType,DoubleType,BooleanType}
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, DataFrame}
 import org.apache.spark.storage.StorageLevel
 
@@ -49,6 +49,30 @@ private[this] case class IntColumnDefinition(
 
   override def castExpression(): Column = {
     col(name).cast(IntegerType).as(name)
+  }
+}
+
+private[this] case class ShortColumnDefinition(
+                                              name: String,
+                                              isNullable: Boolean = true,
+                                              minValue: Option[Short] = None,
+                                              maxValue: Option[Short] = None)
+  extends ColumnDefinition {
+
+  override def castExpression(): Column = {
+    col(name).cast(ShortType).as(name)
+  }
+}
+
+private[this] case class ByteColumnDefinition(
+                                                name: String,
+                                                isNullable: Boolean = true,
+                                                minValue: Option[Byte] = None,
+                                                maxValue: Option[Byte] = None)
+  extends ColumnDefinition {
+
+  override def castExpression(): Column = {
+    col(name).cast(ByteType).as(name)
   }
 }
 
@@ -105,6 +129,17 @@ private[this] case class TimestampColumnDefinition(
   }
 }
 
+private[this] case class DateColumnDefinition(
+                                                    name: String,
+                                                    mask: String,
+                                                    isNullable: Boolean = true)
+  extends ColumnDefinition {
+
+  override def castExpression(): Column = {
+    to_date(col(name), mask).cast(DateType).as(name)
+  }
+}
+
 
 /** A simple schema definition for relational data in Andes */
 case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) {
@@ -148,6 +183,44 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
   : RowLevelSchema = {
 
     RowLevelSchema(columnDefinitions :+ IntColumnDefinition(name, isNullable, minValue, maxValue))
+  }
+
+  /**
+   * Declare an short column
+   *
+   * @param name       column name
+   * @param isNullable are NULL values permitted?
+   * @param minValue   minimum value
+   * @param maxValue   maximum value
+   * @return
+   */
+  def withShortColumn(
+                     name: String,
+                     isNullable: Boolean = true,
+                     minValue: Option[Short] = None,
+                     maxValue: Option[Short] = None)
+  : RowLevelSchema = {
+
+    RowLevelSchema(columnDefinitions :+ ShortColumnDefinition(name, isNullable, minValue, maxValue))
+  }
+
+  /**
+   * Declare an short column
+   *
+   * @param name       column name
+   * @param isNullable are NULL values permitted?
+   * @param minValue   minimum value
+   * @param maxValue   maximum value
+   * @return
+   */
+  def withByteColumn(
+                       name: String,
+                       isNullable: Boolean = true,
+                       minValue: Option[Byte] = None,
+                       maxValue: Option[Byte] = None)
+  : RowLevelSchema = {
+
+    RowLevelSchema(columnDefinitions :+ ByteColumnDefinition(name, isNullable, minValue, maxValue))
   }
 
   /**
@@ -229,6 +302,23 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
 
     RowLevelSchema(columnDefinitions :+ TimestampColumnDefinition(name, mask, isNullable))
   }
+
+  /**
+   * Declare a date column
+   *
+   * @param name       column name
+   * @param mask       pattern for the date
+   * @param isNullable are NULL values permitted?
+   * @return
+   */
+  def withDateColumn(
+                           name: String,
+                           mask: String,
+                           isNullable: Boolean = true)
+  : RowLevelSchema = {
+
+    RowLevelSchema(columnDefinitions :+ DateColumnDefinition(name, mask, isNullable))
+  }
 }
 
 /**
@@ -255,8 +345,8 @@ object RowLevelSchemaValidator {
    * Enforces a schema on textual data, filters out non-conforming columns and casts the result
    * to the requested types
    *
-   * @param data                               a data frame holding the data to validate in string-typed columns
-   * @param schema                             the schema to enforce
+   * @param data a data frame holding the data to validate in string-typed columns
+   * @param schema the schema to enforce
    * @param storageLevelForIntermediateResults the storage level for intermediate results
    *                                           (to control caching behavior)
    * @return results of schema enforcement
@@ -279,7 +369,7 @@ object RowLevelSchemaValidator {
     val invalidRows = dataWithMatches
       .where(col(MATCHES_COLUMN) =!= "")
 
-    //TODO:.drop(MATCHES_COLUMN)
+    // TODO:.drop(MATCHES_COLUMN)
 
     val numInValidRows = invalidRows.count()
 
@@ -314,7 +404,10 @@ object RowLevelSchemaValidator {
     schema.columnDefinitions.foldLeft("") { case (cnf, columnDefinition) =>
       nextCnf = if (cnf.eq(nextCnf)) cnf else nextCnf + ", "
       if (!columnDefinition.isNullable) {
-        nextCnf = nextCnf.concat(lit(when(col(columnDefinition.name).isNotNull, lit("\"\"")).otherwise("\"" + columnDefinition.name + ":NULL,\"")).toString())
+        nextCnf = nextCnf.concat(
+          lit(when(col(columnDefinition.name).isNotNull,
+            lit("\"\"")
+          ).otherwise("\"" + columnDefinition.name + ":NULL,\"")).toString())
         nextCnf = nextCnf + ", "
 
       }
@@ -322,67 +415,149 @@ object RowLevelSchemaValidator {
 
       columnDefinition match {
 
+        case byteDef: ByteColumnDefinition =>
+
+          val colAsByte = col(byteDef.name).cast(ByteType)
+
+          /* null or successfully casted */
+          nextCnf = nextCnf.concat(
+            lit(when(
+              colIsNull.or(colAsByte.isNotNull),
+              lit("\"\"")
+            ).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf + ", "
+
+          byteDef.minValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(
+                colIsNull.isNull.or(colAsByte.geq(value)),
+                lit("\"\"")
+              ).otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
+          byteDef.maxValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(colAsByte.leq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
+        case shortDef: ShortColumnDefinition =>
+
+          val colAsShort = col(shortDef.name).cast(ShortType)
+
+          /* null or successfully casted */
+          nextCnf = nextCnf.concat(
+            lit(when(colIsNull.or(colAsShort.isNotNull), lit("\"\""))
+              .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf + ", "
+
+          shortDef.minValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.isNull.or(colAsShort.geq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
+          shortDef.maxValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(colAsShort.leq(value)), lit("\"\""))
+              .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
         case intDef: IntColumnDefinition =>
 
           val colAsInt = col(intDef.name).cast(IntegerType)
 
           /* null or successfully casted */
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsInt.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf.concat(
+            lit(when(colIsNull.or(colAsInt.isNotNull), lit("\"\""))
+              .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
 
           intDef.minValue.foreach { value =>
-            nextCnf = nextCnf.concat(lit(when(colIsNull.isNull.or(colAsInt.geq(value)), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.isNull.or(colAsInt.geq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
             nextCnf = nextCnf + ", "
           }
 
           intDef.maxValue.foreach { value =>
-            nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsInt.leq(value)), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(colAsInt.leq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
             nextCnf = nextCnf + ", "
           }
 
         case decDef: DecimalColumnDefinition =>
 
           val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(col(decDef.name).cast(decType).isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf.concat(
+            lit(when(colIsNull.or(col(decDef.name).cast(decType).isNotNull), lit("\"\""))
+              .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case strDef: StringColumnDefinition =>
 
           strDef.minLength.foreach { value =>
-            nextCnf = nextCnf.concat(lit(when(colIsNull.or(length(col(strDef.name)).geq(value)), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(length(col(strDef.name)).geq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
             nextCnf = nextCnf + ", "
 
           }
 
           strDef.maxLength.foreach { value =>
-            nextCnf = nextCnf.concat(lit(when(colIsNull.or(length(col(strDef.name)).leq(value)), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(length(col(strDef.name)).leq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
             nextCnf = nextCnf + ", "
           }
           strDef.matches.foreach { regex =>
             var regexQuoted = "'" + regex.replace("\\", "\\\\") + "'"
-            nextCnf = nextCnf.concat(lit(when(colIsNull.or(regexp_extract(col(strDef.name), regexQuoted, 0).notEqual("\"\"")), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":PATTERN,\"")).toString())
+            nextCnf = nextCnf.concat(
+              lit(
+                when(
+                  colIsNull.or(regexp_extract(col(strDef.name), regexQuoted, 0).notEqual("\"\"")),
+                  lit("\"\"")
+                )
+                  .otherwise("\"" + columnDefinition.name + ":PATTERN,\"")).toString()
+            )
             nextCnf = nextCnf + ", "
 
           }
         case tsDef: TimestampColumnDefinition =>
           /* null or successfully casted */
-          var maskQuoted = "'" + tsDef.mask + "'"
+          val maskQuoted = "'" + tsDef.mask + "'"
           nextCnf = nextCnf.concat(lit(when(colIsNull.or(unix_timestamp(col(tsDef.name), maskQuoted)
-            .cast(TimestampType).isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+            .cast(TimestampType).isNotNull), lit("\"\""))
+            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf + ", "
+        case dateDef: DateColumnDefinition =>
+          /* null or successfully casted */
+          val maskQuoted = "'" + dateDef.mask + "'"
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(to_date(col(dateDef.name), maskQuoted)
+            .cast(DateType).isNotNull), lit("\"\""))
+            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case floatDef: FloatColumnDefinition =>
           /* null or successfully casted */
           val colAsFloat = col(floatDef.name).cast(FloatType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsFloat.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsFloat.isNotNull), lit("\"\""))
+            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case doubleDef: DoubleColumnDefinition =>
           /* null or successfully casted */
           val colAsDouble = col(doubleDef.name).cast(DoubleType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsDouble.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsDouble.isNotNull), lit("\"\""))
+            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
         case booleanDef: BooleanColumnDefinition =>
           /* null or successfully casted */
           val colAsBoolean = col(booleanDef.name).cast(BooleanType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsBoolean.isNotNull), lit("\"\"")).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
+          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsBoolean.isNotNull), lit("\"\""))
+            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
 
         case _ =>
