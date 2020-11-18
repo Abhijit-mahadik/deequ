@@ -424,7 +424,7 @@ object RowLevelSchemaValidator {
     dataWithMatches.select(projection: _*).where(col(MATCHES_COLUMN) === "")
   }
 
-  private def toCnfFromMaskedDefinition(
+  private[this] def toCnfFromMaskedDefinition(
                      colDef: MaskColumnDefinition,
                      colIsNull: Column,
                      targetType: DataType,
@@ -439,7 +439,7 @@ object RowLevelSchemaValidator {
       .otherwise(s"${colDef.name}:D-TYPE")
   }
 
-  def toCnfFromColumns(columns: Column*): Column = {
+  private[this] def toCnfFromColumns(columns: Column*): Column = {
     val noEmptyColumns =
       columns
         .filter(_ != lit(""))
@@ -454,7 +454,7 @@ object RowLevelSchemaValidator {
     }
   }
 
-  private def toCnfFromNumericDefinition(
+  private[this] def toCnfFromNumericDefinition(
                      colDef: NumericColumnDefinition[_],
                      colIsNull: Column,
                      typedColumn: Column): Column = {
