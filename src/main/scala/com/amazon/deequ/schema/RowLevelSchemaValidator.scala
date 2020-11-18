@@ -32,6 +32,15 @@ sealed trait ColumnDefinition {
   }
 }
 
+sealed trait NumericColumnDefinition[T] extends ColumnDefinition {
+  val minValue: Option[T]
+  val maxValue: Option[T]
+}
+
+sealed trait MaskColumnDefinition extends ColumnDefinition {
+  val mask: String
+}
+
 private[this] case class StringColumnDefinition(
                                                  name: String,
                                                  isNullable: Boolean = true,
@@ -45,7 +54,7 @@ private[this] case class IntColumnDefinition(
                                               isNullable: Boolean = true,
                                               minValue: Option[Int] = None,
                                               maxValue: Option[Int] = None)
-  extends ColumnDefinition {
+  extends NumericColumnDefinition[Int] {
 
   override def castExpression(): Column = {
     col(name).cast(IntegerType).as(name)
@@ -57,7 +66,7 @@ private[this] case class ShortColumnDefinition(
                                               isNullable: Boolean = true,
                                               minValue: Option[Short] = None,
                                               maxValue: Option[Short] = None)
-  extends ColumnDefinition {
+  extends NumericColumnDefinition[Short] {
 
   override def castExpression(): Column = {
     col(name).cast(ShortType).as(name)
@@ -69,7 +78,7 @@ private[this] case class ByteColumnDefinition(
                                                 isNullable: Boolean = true,
                                                 minValue: Option[Byte] = None,
                                                 maxValue: Option[Byte] = None)
-  extends ColumnDefinition {
+  extends NumericColumnDefinition[Byte] {
 
   override def castExpression(): Column = {
     col(name).cast(ByteType).as(name)
@@ -93,7 +102,7 @@ private[this] case class FloatColumnDefinition(
                                                 isNullable: Boolean = true,
                                                 minValue: Option[Float] = None,
                                                 maxValue: Option[Float] = None)
-  extends ColumnDefinition {
+  extends NumericColumnDefinition[Float] {
 
   override def castExpression(): Column = {
     col(name).cast(FloatType).as(name)
@@ -105,7 +114,7 @@ private[this] case class DoubleColumnDefinition(
                                                  isNullable: Boolean = true,
                                                  minValue: Option[Double] = None,
                                                  maxValue: Option[Double] = None)
-  extends ColumnDefinition {
+  extends NumericColumnDefinition[Double] {
 
   override def castExpression(): Column = {
     col(name).cast(DoubleType).as(name)
@@ -126,7 +135,7 @@ private[this] case class TimestampColumnDefinition(
                                                     name: String,
                                                     mask: String,
                                                     isNullable: Boolean = true)
-  extends ColumnDefinition {
+  extends MaskColumnDefinition {
 
   override def castExpression(): Column = {
     unix_timestamp(col(name), mask).cast(TimestampType).as(name)
@@ -137,7 +146,7 @@ private[this] case class DateColumnDefinition(
                                                     name: String,
                                                     mask: String,
                                                     isNullable: Boolean = true)
-  extends ColumnDefinition {
+  extends MaskColumnDefinition {
 
   override def castExpression(): Column = {
     to_date(col(name), mask).cast(DateType).as(name)
@@ -373,7 +382,7 @@ object RowLevelSchemaValidator {
               ): RowLevelSchemaValidationResult = {
 
     val dataWithMatches = data
-      .withColumn(MATCHES_COLUMN, expr(toCNF(schema) + "\"\")"))
+      .withColumn(MATCHES_COLUMN, toCNF(schema))
 
 
     dataWithMatches.persist(storageLevelForIntermediateResults)
@@ -381,8 +390,9 @@ object RowLevelSchemaValidator {
     val validRows = extractAndCastValidRows(dataWithMatches, schema)
     val numValidRows = validRows.count()
 
+    dataWithMatches.show(false)
     val invalidRows = dataWithMatches
-      .where(col(MATCHES_COLUMN) =!= "")
+      .where(col(MATCHES_COLUMN) =!= lit(""))
 
     // TODO:.drop(MATCHES_COLUMN)
 
@@ -414,206 +424,159 @@ object RowLevelSchemaValidator {
     dataWithMatches.select(projection: _*).where(col(MATCHES_COLUMN) === "")
   }
 
-  private[this] def toCNF(schema: RowLevelSchema): String = {
-    var nextCnf = "concat(\"\""
-    schema.columnDefinitions.foldLeft("") { case (cnf, columnDefinition) =>
-      nextCnf = if (cnf.eq(nextCnf)) cnf else nextCnf + ", "
-      if (!columnDefinition.isNullable) {
-        nextCnf = nextCnf.concat(
-          lit(when(col(columnDefinition.name).isNotNull,
-            lit("\"\"")
-          ).otherwise("\"" + columnDefinition.name + ":NULL,\"")).toString())
-        nextCnf = nextCnf + ", "
-
-      }
-      val colIsNull = col(columnDefinition.name).isNull
-
-      columnDefinition match {
-
-        case byteDef: ByteColumnDefinition =>
-
-          val colAsByte = col(byteDef.name).cast(ByteType)
-
-          /* null or successfully casted */
-          nextCnf = nextCnf.concat(
-            lit(when(
-              colIsNull.or(colAsByte.isNotNull),
-              lit("\"\"")
-            ).otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-          byteDef.minValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(
-                colIsNull.isNull.or(colAsByte.geq(value)),
-                lit("\"\"")
-              ).otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-          byteDef.maxValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(colAsByte.leq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-        case shortDef: ShortColumnDefinition =>
-
-          val colAsShort = col(shortDef.name).cast(ShortType)
-
-          /* null or successfully casted */
-          nextCnf = nextCnf.concat(
-            lit(when(colIsNull.or(colAsShort.isNotNull), lit("\"\""))
-              .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-          shortDef.minValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.isNull.or(colAsShort.geq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-          shortDef.maxValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(colAsShort.leq(value)), lit("\"\""))
-              .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-        case intDef: IntColumnDefinition =>
-
-          val colAsInt = col(intDef.name).cast(IntegerType)
-
-          /* null or successfully casted */
-          nextCnf = nextCnf.concat(
-            lit(when(colIsNull.or(colAsInt.isNotNull), lit("\"\""))
-              .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-          intDef.minValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.isNull.or(colAsInt.geq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-          intDef.maxValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(colAsInt.leq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-        case decDef: DecimalColumnDefinition =>
-
-          val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
-          nextCnf = nextCnf.concat(
-            lit(when(colIsNull.or(col(decDef.name).cast(decType).isNotNull), lit("\"\""))
-              .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-        case strDef: StringColumnDefinition =>
-
-          strDef.minLength.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(length(col(strDef.name)).geq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
-            nextCnf = nextCnf + ", "
-
-          }
-
-          strDef.maxLength.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(length(col(strDef.name)).leq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-          strDef.matches.foreach { regex =>
-            var regexQuoted = "'" + regex.replace("\\", "\\\\") + "'"
-            nextCnf = nextCnf.concat(
-              lit(
-                when(
-                  colIsNull.or(regexp_extract(col(strDef.name), regexQuoted, 0).notEqual("\"\"")),
-                  lit("\"\"")
-                )
-                  .otherwise("\"" + columnDefinition.name + ":PATTERN,\"")).toString()
-            )
-            nextCnf = nextCnf + ", "
-
-          }
-        case tsDef: TimestampColumnDefinition =>
-          /* null or successfully casted */
-          val maskQuoted = "'" + tsDef.mask + "'"
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(unix_timestamp(col(tsDef.name), maskQuoted)
-            .cast(TimestampType).isNotNull), lit("\"\""))
-            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-        case dateDef: DateColumnDefinition =>
-          /* null or successfully casted */
-          val maskQuoted = "'" + dateDef.mask + "'"
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(to_date(col(dateDef.name), maskQuoted)
-            .cast(DateType).isNotNull), lit("\"\""))
-            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-        case floatDef: FloatColumnDefinition =>
-          /* null or successfully casted */
-          val colAsFloat = col(floatDef.name).cast(FloatType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsFloat.isNotNull), lit("\"\""))
-            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-          floatDef.minValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.isNull.or(colAsFloat.geq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-          floatDef.maxValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(colAsFloat.leq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-        case doubleDef: DoubleColumnDefinition =>
-          /* null or successfully casted */
-          val colAsDouble = col(doubleDef.name).cast(DoubleType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsDouble.isNotNull), lit("\"\""))
-            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-          doubleDef.minValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.isNull.or(colAsDouble.geq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-          doubleDef.maxValue.foreach { value =>
-            nextCnf = nextCnf.concat(
-              lit(when(colIsNull.or(colAsDouble.leq(value)), lit("\"\""))
-                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
-            nextCnf = nextCnf + ", "
-          }
-
-        case booleanDef: BooleanColumnDefinition =>
-          /* null or successfully casted */
-          val colAsBoolean = col(booleanDef.name).cast(BooleanType)
-          nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsBoolean.isNotNull), lit("\"\""))
-            .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
-          nextCnf = nextCnf + ", "
-
-        case _ =>
-      }
-
-      println("Printing:" + nextCnf)
-      nextCnf
-
-    }
-
+  private def toCnfFromMaskedDefinition(
+                     colDef: MaskColumnDefinition,
+                     colIsNull: Column,
+                     targetType: DataType,
+                     parser: (Column, String) => Column): Column = {
+    when(
+      colIsNull.or(
+        parser(col(colDef.name), colDef.mask)
+          .cast(targetType).isNotNull
+      ),
+      lit("")
+    )
+      .otherwise(s"${colDef.name}:D-TYPE")
   }
 
+  def toCnfFromColumns(columns: Column*): Column = {
+    val noEmptyColumns =
+      columns
+        .filter(_ != lit(""))
+
+    if(noEmptyColumns.isEmpty) {
+      lit("")
+    } else {
+      concat(
+        noEmptyColumns
+          : _*
+      )
+    }
+  }
+
+  private def toCnfFromNumericDefinition(
+                     colDef: NumericColumnDefinition[_],
+                     colIsNull: Column,
+                     typedColumn: Column): Column = {
+    toCnfFromColumns(
+      when(
+        colIsNull.or(typedColumn.isNotNull),
+        lit("")
+      )
+        .otherwise(s"${colDef.name}:D-TYPE"),
+      colDef.minValue.map { value =>
+        when(
+          colIsNull.isNull.or(typedColumn.geq(value)),
+          lit("")
+        )
+          .otherwise(s"${colDef.name}:MIN")
+      }
+        .getOrElse(lit("")),
+      colDef.maxValue.map { value =>
+        when(
+          colIsNull.or(typedColumn.leq(value)),
+          lit("")
+        )
+          .otherwise(s"${colDef.name}:MAX")
+      }
+        .getOrElse(lit(""))
+    )
+  }
+
+  private[this] def toCnfFromDefinition(columnDefinition: ColumnDefinition): Column = {
+    toCnfFromColumns(
+      if (!columnDefinition.isNullable) {
+        when(
+          col(columnDefinition.name).isNull,
+          lit(s"${columnDefinition.name}:NULL")
+        )
+          .otherwise(lit(""))
+      } else {
+        lit("")
+      }, {
+        val colIsNull = col(columnDefinition.name).isNull
+        columnDefinition match {
+          case byteDef: ByteColumnDefinition =>
+            toCnfFromNumericDefinition(byteDef, colIsNull, col(byteDef.name).cast(ByteType))
+
+          case shortDef: ShortColumnDefinition =>
+            toCnfFromNumericDefinition(shortDef, colIsNull, col(shortDef.name).cast(ShortType))
+
+          case intDef: IntColumnDefinition =>
+            toCnfFromNumericDefinition(intDef, colIsNull, col(intDef.name).cast(IntegerType))
+
+          case decDef: DecimalColumnDefinition =>
+            val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
+
+            when(
+              colIsNull.or(col(decDef.name).cast(decType).isNotNull),
+              lit("")
+            )
+              .otherwise(s"${columnDefinition.name}:D-TYPE")
+
+          case strDef: StringColumnDefinition =>
+            toCnfFromColumns(
+              strDef.minLength.map { value =>
+                when(
+                  colIsNull.or(length(col(strDef.name)).geq(value)),
+                  lit("")
+                )
+                  .otherwise(s"${columnDefinition.name}:MIN")
+              }
+                .getOrElse(lit("")),
+              strDef.maxLength.map { value =>
+                when(
+                  colIsNull.or(length(col(strDef.name)).leq(value)),
+                  lit("")
+                )
+                  .otherwise(s"${columnDefinition.name}:MAX")
+              }
+                .getOrElse(lit("")),
+              strDef.matches.map { regex =>
+                lit(
+                  when(
+                    colIsNull.or(regexp_extract(col(strDef.name), regex, 0).notEqual("")),
+                    lit("")
+                  )
+                    .otherwise(s"${columnDefinition.name}:PATTERN")
+                )
+              }
+                .getOrElse(lit(""))
+            )
+
+          case tsDef: TimestampColumnDefinition =>
+            val parser: (Column, String) => Column = unix_timestamp
+            toCnfFromMaskedDefinition(tsDef, colIsNull, TimestampType, parser)
+
+          case dateDef: DateColumnDefinition =>
+            val parser: (Column, String) => Column = to_date
+            toCnfFromMaskedDefinition(dateDef, colIsNull, DateType, parser)
+
+          case floatDef: FloatColumnDefinition =>
+            toCnfFromNumericDefinition(floatDef, colIsNull, col(floatDef.name).cast(FloatType))
+
+          case doubleDef: DoubleColumnDefinition =>
+            toCnfFromNumericDefinition(doubleDef, colIsNull, col(doubleDef.name).cast(DoubleType))
+
+          case booleanDef: BooleanColumnDefinition =>
+            val colAsBoolean = col(booleanDef.name).cast(BooleanType)
+
+            when(
+              colIsNull.or(colAsBoolean.isNotNull),
+              lit("")
+            )
+              .otherwise(s"${columnDefinition.name}:D-TYPE")
+
+          case _ => lit("")
+        }
+      }
+    )
+  }
+
+  private[this] def toCNF(schema: RowLevelSchema): Column = {
+    val columns =
+      schema.columnDefinitions.map(toCnfFromDefinition)
+
+    toCnfFromColumns(columns: _*)
+  }
 }
