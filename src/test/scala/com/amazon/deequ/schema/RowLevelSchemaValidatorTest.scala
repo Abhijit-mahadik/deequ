@@ -59,6 +59,30 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
       assert(!invalidIds.contains("456"))
     }
 
+    "correctly enforce non rejections" in withSparkSession { sparkSession =>
+
+      import sparkSession.implicits._
+
+      val data = Seq(
+        ("123", "Product A", "2012-07-22 22:59:59"),
+        ("N/A", "Product B", null),
+        ("456", null, "2012-07-22 22:59:59"),
+        (null, "Product C", "1231234213")
+      ).toDF("id", "name", "event_time")
+
+      val schema = RowLevelSchema()
+        .withIntColumn("id", isNullable = false, minValue = Some(12), shouldReject = false)
+        .withStringColumn("name", maxLength = Some(10), shouldReject = false)
+        .withTimestampColumn("event_time", mask = "yyyy-MM-dd HH:mm:ss",
+          isNullable = false,
+          shouldReject = false
+        )
+
+      val result = RowLevelSchemaValidator.validate(data, schema)
+
+      assert(result.numInvalidRows == 0)
+    }
+
     "correctly enforce string constraints" in withSparkSession { sparkSession =>
 
       import sparkSession.implicits._

@@ -26,6 +26,7 @@ sealed trait ColumnDefinition {
   def name: String
 
   def isNullable: Boolean
+  def shouldReject: Boolean
 
   def castExpression(): Column = {
     col(name)
@@ -46,14 +47,16 @@ private[this] case class StringColumnDefinition(
                                                  isNullable: Boolean = true,
                                                  minLength: Option[Int] = None,
                                                  maxLength: Option[Int] = None,
-                                                 matches: Option[String] = None)
+                                                 matches: Option[String] = None,
+                                                 shouldReject: Boolean = true)
   extends ColumnDefinition
 
 private[this] case class IntColumnDefinition(
                                               name: String,
                                               isNullable: Boolean = true,
                                               minValue: Option[Int] = None,
-                                              maxValue: Option[Int] = None)
+                                              maxValue: Option[Int] = None,
+                                              shouldReject: Boolean = true)
   extends NumericColumnDefinition[Int] {
 
   override def castExpression(): Column = {
@@ -65,7 +68,8 @@ private[this] case class LongColumnDefinition(
                                               name: String,
                                               isNullable: Boolean = true,
                                               minValue: Option[Long] = None,
-                                              maxValue: Option[Long] = None)
+                                              maxValue: Option[Long] = None,
+                                              shouldReject: Boolean = true)
   extends NumericColumnDefinition[Long] {
 
   override def castExpression(): Column = {
@@ -77,7 +81,8 @@ private[this] case class ShortColumnDefinition(
                                               name: String,
                                               isNullable: Boolean = true,
                                               minValue: Option[Short] = None,
-                                              maxValue: Option[Short] = None)
+                                              maxValue: Option[Short] = None,
+                                              shouldReject: Boolean = true)
   extends NumericColumnDefinition[Short] {
 
   override def castExpression(): Column = {
@@ -89,7 +94,8 @@ private[this] case class ByteColumnDefinition(
                                                 name: String,
                                                 isNullable: Boolean = true,
                                                 minValue: Option[Byte] = None,
-                                                maxValue: Option[Byte] = None)
+                                                maxValue: Option[Byte] = None,
+                                                shouldReject: Boolean = true)
   extends NumericColumnDefinition[Byte] {
 
   override def castExpression(): Column = {
@@ -101,7 +107,8 @@ private[this] case class DecimalColumnDefinition(
                                                   name: String,
                                                   precision: Int,
                                                   scale: Int,
-                                                  isNullable: Boolean = true)
+                                                  isNullable: Boolean = true,
+                                                  shouldReject: Boolean = true)
   extends ColumnDefinition {
 
   override def castExpression(): Column = {
@@ -113,7 +120,8 @@ private[this] case class FloatColumnDefinition(
                                                 name: String,
                                                 isNullable: Boolean = true,
                                                 minValue: Option[Float] = None,
-                                                maxValue: Option[Float] = None)
+                                                maxValue: Option[Float] = None,
+                                                shouldReject: Boolean = true)
   extends NumericColumnDefinition[Float] {
 
   override def castExpression(): Column = {
@@ -125,7 +133,8 @@ private[this] case class DoubleColumnDefinition(
                                                  name: String,
                                                  isNullable: Boolean = true,
                                                  minValue: Option[Double] = None,
-                                                 maxValue: Option[Double] = None)
+                                                 maxValue: Option[Double] = None,
+                                                 shouldReject: Boolean = true)
   extends NumericColumnDefinition[Double] {
 
   override def castExpression(): Column = {
@@ -135,7 +144,8 @@ private[this] case class DoubleColumnDefinition(
 
 private[this] case class BooleanColumnDefinition(
                                                   name: String,
-                                                  isNullable: Boolean = true)
+                                                  isNullable: Boolean = true,
+                                                  shouldReject: Boolean = true)
   extends ColumnDefinition {
 
   override def castExpression(): Column = {
@@ -146,7 +156,8 @@ private[this] case class BooleanColumnDefinition(
 private[this] case class TimestampColumnDefinition(
                                                     name: String,
                                                     mask: String,
-                                                    isNullable: Boolean = true)
+                                                    isNullable: Boolean = true,
+                                                    shouldReject: Boolean = true)
   extends MaskColumnDefinition {
 
   override def castExpression(): Column = {
@@ -157,7 +168,8 @@ private[this] case class TimestampColumnDefinition(
 private[this] case class DateColumnDefinition(
                                                     name: String,
                                                     mask: String,
-                                                    isNullable: Boolean = true)
+                                                    isNullable: Boolean = true,
+                                                    shouldReject: Boolean = true)
   extends MaskColumnDefinition {
 
   override def castExpression(): Column = {
@@ -184,11 +196,12 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                         isNullable: Boolean = true,
                         minLength: Option[Int] = None,
                         maxLength: Option[Int] = None,
-                        matches: Option[String] = None)
+                        matches: Option[String] = None,
+                        shouldReject: Boolean = true)
   : RowLevelSchema = {
 
     RowLevelSchema(columnDefinitions :+ StringColumnDefinition(name, isNullable, minLength,
-      maxLength, matches))
+      maxLength, matches, shouldReject))
   }
 
   /**
@@ -204,10 +217,19 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                      name: String,
                      isNullable: Boolean = true,
                      minValue: Option[Int] = None,
-                     maxValue: Option[Int] = None)
+                     maxValue: Option[Int] = None,
+                     shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ IntColumnDefinition(name, isNullable, minValue, maxValue))
+    RowLevelSchema(columnDefinitions :+
+      IntColumnDefinition(
+        name,
+        isNullable,
+        minValue,
+        maxValue,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -223,10 +245,19 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                      name: String,
                      isNullable: Boolean = true,
                      minValue: Option[Long] = None,
-                     maxValue: Option[Long] = None)
+                     maxValue: Option[Long] = None,
+                     shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ LongColumnDefinition(name, isNullable, minValue, maxValue))
+    RowLevelSchema(columnDefinitions :+
+      LongColumnDefinition(
+        name,
+        isNullable,
+        minValue,
+        maxValue,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -242,10 +273,19 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                      name: String,
                      isNullable: Boolean = true,
                      minValue: Option[Short] = None,
-                     maxValue: Option[Short] = None)
+                     maxValue: Option[Short] = None,
+                     shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ ShortColumnDefinition(name, isNullable, minValue, maxValue))
+    RowLevelSchema(columnDefinitions :+
+      ShortColumnDefinition(
+        name,
+        isNullable,
+        minValue,
+        maxValue,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -261,10 +301,19 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                        name: String,
                        isNullable: Boolean = true,
                        minValue: Option[Byte] = None,
-                       maxValue: Option[Byte] = None)
+                       maxValue: Option[Byte] = None,
+                       shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ ByteColumnDefinition(name, isNullable, minValue, maxValue))
+    RowLevelSchema(columnDefinitions :+
+      ByteColumnDefinition(
+        name,
+        isNullable,
+        minValue,
+        maxValue,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -278,9 +327,18 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                        name: String,
                        isNullable: Boolean = true,
                        minValue: Option[Float] = None,
-                       maxValue: Option[Float] = None)
+                       maxValue: Option[Float] = None,
+                       shouldReject: Boolean = true)
   : RowLevelSchema = {
-    RowLevelSchema(columnDefinitions :+ FloatColumnDefinition(name, isNullable, minValue, maxValue))
+    RowLevelSchema(columnDefinitions :+
+      FloatColumnDefinition(
+        name,
+        isNullable,
+        minValue,
+        maxValue,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -294,14 +352,16 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                         name: String,
                         isNullable: Boolean = true,
                         minValue: Option[Double] = None,
-                        maxValue: Option[Double] = None)
+                        maxValue: Option[Double] = None,
+                        shouldReject: Boolean = true)
   : RowLevelSchema = {
     RowLevelSchema(
       columnDefinitions :+ DoubleColumnDefinition(
         name,
         isNullable,
         minValue,
-        maxValue
+        maxValue,
+        shouldReject
       )
     )
   }
@@ -315,9 +375,16 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
    */
   def withBooleanColumn(
                          name: String,
-                         isNullable: Boolean = true)
+                         isNullable: Boolean = true,
+                         shouldReject: Boolean = true)
   : RowLevelSchema = {
-    RowLevelSchema(columnDefinitions :+ BooleanColumnDefinition(name, isNullable))
+    RowLevelSchema(columnDefinitions :+
+      BooleanColumnDefinition(
+        name,
+        isNullable,
+        shouldReject
+      )
+    )
   }
 
 
@@ -335,10 +402,19 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
                          name: String,
                          precision: Int,
                          scale: Int,
-                         isNullable: Boolean = true)
+                         isNullable: Boolean = true,
+                         shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ DecimalColumnDefinition(name, precision, scale, isNullable))
+    RowLevelSchema(columnDefinitions :+
+      DecimalColumnDefinition(
+        name,
+        precision,
+        scale,
+        isNullable,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -352,10 +428,18 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
   def withTimestampColumn(
                            name: String,
                            mask: String,
-                           isNullable: Boolean = true)
+                           isNullable: Boolean = true,
+                           shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ TimestampColumnDefinition(name, mask, isNullable))
+    RowLevelSchema(columnDefinitions :+
+      TimestampColumnDefinition(
+        name,
+        mask,
+        isNullable,
+        shouldReject
+      )
+    )
   }
 
   /**
@@ -369,10 +453,11 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
   def withDateColumn(
                            name: String,
                            mask: String,
-                           isNullable: Boolean = true)
+                           isNullable: Boolean = true,
+                           shouldReject: Boolean = true)
   : RowLevelSchema = {
 
-    RowLevelSchema(columnDefinitions :+ DateColumnDefinition(name, mask, isNullable))
+    RowLevelSchema(columnDefinitions :+ DateColumnDefinition(name, mask, isNullable, shouldReject))
   }
 }
 
@@ -395,6 +480,7 @@ case class RowLevelSchemaValidationResult(
 object RowLevelSchemaValidator {
 
   private[this] val MATCHES_COLUMN = "validation_error"
+  private[this] val SHOULD_REJECT = "should_reject"
 
   /**
    * Enforces a schema on textual data, filters out non-conforming columns and casts the result
@@ -412,9 +498,10 @@ object RowLevelSchemaValidator {
                 storageLevelForIntermediateResults: StorageLevel = StorageLevel.MEMORY_AND_DISK
               ): RowLevelSchemaValidationResult = {
 
+    val (message, valid) = toCNF(schema)
     val dataWithMatches = data
-      .withColumn(MATCHES_COLUMN, toCNF(schema))
-
+      .withColumn(MATCHES_COLUMN, message)
+      .withColumn(SHOULD_REJECT, valid)
 
     dataWithMatches.persist(storageLevelForIntermediateResults)
 
@@ -423,7 +510,7 @@ object RowLevelSchemaValidator {
 
     dataWithMatches.show(false)
     val invalidRows = dataWithMatches
-      .where(col(MATCHES_COLUMN) =!= lit(""))
+      .where(col(SHOULD_REJECT) === lit(true))
 
     // TODO:.drop(MATCHES_COLUMN)
 
@@ -448,23 +535,28 @@ object RowLevelSchemaValidator {
         _.name
       }
       .filter {
-        _ != MATCHES_COLUMN
+        column => column != MATCHES_COLUMN && column != SHOULD_REJECT
       }
       .map { name => castExpressions.getOrElse(name, col(name)) }
 
-    dataWithMatches.select(projection: _*).where(col(MATCHES_COLUMN) === "")
+    dataWithMatches.select(projection: _*).where(col(SHOULD_REJECT) === lit(false))
   }
 
   private[this] def toCnfFromMaskedDefinition(
                      colDef: MaskColumnDefinition,
-                     colIsNull: Column): Column = {
-    when(
-      colIsNull.or(
-        colDef.castExpression().isNotNull
-      ),
-      lit("")
+                     colIsNull: Column): (Column, Column) = {
+    val hasCorrectType = colDef.castExpression().isNotNull
+
+    (
+      when(
+        colIsNull.or(
+          hasCorrectType
+        ),
+        lit("")
+      )
+        .otherwise(s"${colDef.name}:D-TYPE"),
+      hasCorrectType
     )
-      .otherwise(s"${colDef.name}:D-TYPE")
   }
 
   private[this] def toCnfFromColumns(columns: Column*): Column = {
@@ -484,128 +576,165 @@ object RowLevelSchemaValidator {
 
   private[this] def toCnfFromNumericDefinition(
                      colDef: NumericColumnDefinition[_],
-                     colIsNull: Column): Column = {
+                     colIsNull: Column): (Column, Column) = {
     val typedColumn = colDef.castExpression()
-    toCnfFromColumns(
-      when(
-        colIsNull.or(typedColumn.isNotNull),
-        lit("")
-      )
-        .otherwise(s"${colDef.name}:D-TYPE"),
-      colDef.minValue.map { value =>
+    val hasCorrectType = colIsNull.or(typedColumn.isNotNull)
+    val hasCorrectMinValue =
+    colDef.minValue.map { value =>
+      colIsNull.isNull.or(typedColumn.geq(value))
+    }
+      .getOrElse(lit(true))
+    val hasCorrectMaxValue =
+      colDef.maxValue.map { value =>
+        colIsNull.or(typedColumn.leq(value))
+      }
+        .getOrElse(lit(true))
+
+    (
+      toCnfFromColumns(
         when(
-          colIsNull.isNull.or(typedColumn.geq(value)),
+          hasCorrectType,
           lit("")
         )
-          .otherwise(s"${colDef.name}:MIN")
-      }
-        .getOrElse(lit("")),
-      colDef.maxValue.map { value =>
+          .otherwise(s"${colDef.name}:D-TYPE"),
         when(
-          colIsNull.or(typedColumn.leq(value)),
+          hasCorrectMinValue,
+          lit("")
+        )
+          .otherwise(s"${colDef.name}:MIN"),
+        when(
+          hasCorrectMaxValue,
           lit("")
         )
           .otherwise(s"${colDef.name}:MAX")
-      }
-        .getOrElse(lit(""))
+      ),
+      hasCorrectType and hasCorrectMaxValue and hasCorrectMinValue
     )
   }
 
-  private[this] def toCnfFromDefinition(columnDefinition: ColumnDefinition): Column = {
-    toCnfFromColumns(
-      if (!columnDefinition.isNullable) {
+  private[this] def toCnfFromDefinition(columnDefinition: ColumnDefinition): (Column, Column) = {
+    val (message, isValid): (Column, Column) = {
+      val colIsNull = col(columnDefinition.name).isNull
+      columnDefinition match {
+        case byteDef: ByteColumnDefinition =>
+          toCnfFromNumericDefinition(byteDef, colIsNull)
+
+        case shortDef: ShortColumnDefinition =>
+          toCnfFromNumericDefinition(shortDef, colIsNull)
+
+        case intDef: IntColumnDefinition =>
+          toCnfFromNumericDefinition(intDef, colIsNull)
+
+        case longDef: LongColumnDefinition =>
+          toCnfFromNumericDefinition(longDef, colIsNull)
+
+        case decDef: DecimalColumnDefinition =>
+          val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
+          val hasCorrectDataType = colIsNull.or(col(decDef.name).cast(decType).isNotNull)
+
+          (
+            when(
+              hasCorrectDataType,
+              lit("")
+            )
+              .otherwise(s"${columnDefinition.name}:D-TYPE"),
+            hasCorrectDataType
+          )
+
+        case strDef: StringColumnDefinition =>
+          val hasCorrectMinLength =
+            strDef.minLength.map { value =>
+              colIsNull.or(length(col(strDef.name)).geq(value))
+            }
+              .getOrElse(lit(true))
+          val hasCorrectMaxLength =
+            strDef.maxLength.map { value =>
+              colIsNull.or(length(col(strDef.name)).leq(value))
+            }
+              .getOrElse(lit(true))
+          val matches =
+            strDef.matches.map { regex =>
+              colIsNull.or(regexp_extract(col(strDef.name), regex, 0).notEqual(""))
+            }
+              .getOrElse(lit(true))
+
+          (
+            toCnfFromColumns(
+              when(
+                hasCorrectMinLength,
+                lit("")
+              )
+                .otherwise(s"${columnDefinition.name}:MIN"),
+              when(
+                hasCorrectMaxLength,
+                lit("")
+              )
+                .otherwise(s"${columnDefinition.name}:MAX"),
+              when(
+                matches,
+                lit("")
+              )
+                .otherwise(s"${columnDefinition.name}:PATTERN")
+            ),
+            hasCorrectMaxLength and hasCorrectMinLength and matches
+          )
+
+        case tsDef: TimestampColumnDefinition =>
+          toCnfFromMaskedDefinition(tsDef, colIsNull)
+
+        case dateDef: DateColumnDefinition =>
+          toCnfFromMaskedDefinition(dateDef, colIsNull)
+
+        case floatDef: FloatColumnDefinition =>
+          toCnfFromNumericDefinition(floatDef, colIsNull)
+
+        case doubleDef: DoubleColumnDefinition =>
+          toCnfFromNumericDefinition(doubleDef, colIsNull)
+
+        case booleanDef: BooleanColumnDefinition =>
+          val colAsBoolean = col(booleanDef.name).cast(BooleanType)
+          val hasCorrectType = colIsNull.or(colAsBoolean.isNotNull)
+
+          (
+              when(
+              hasCorrectType,
+              lit("")
+            )
+              .otherwise(s"${columnDefinition.name}:D-TYPE"),
+            hasCorrectType
+          )
+
+        case _ => (lit(""), lit(true))
+      }
+    }
+    val isNullValid =
+      (lit(columnDefinition.isNullable) and col(columnDefinition.name).isNull) or (
+        lit(columnDefinition.isNullable) and col(columnDefinition.name).isNotNull
+      ) or (
+        lit(!columnDefinition.isNullable) and col(columnDefinition.name).isNotNull
+      )
+
+    (
+      toCnfFromColumns(
         when(
-          col(columnDefinition.name).isNull,
+          not(isNullValid),
           lit(s"${columnDefinition.name}:NULL")
         )
-          .otherwise(lit(""))
-      } else {
-        lit("")
-      }, {
-        val colIsNull = col(columnDefinition.name).isNull
-        columnDefinition match {
-          case byteDef: ByteColumnDefinition =>
-            toCnfFromNumericDefinition(byteDef, colIsNull)
-
-          case shortDef: ShortColumnDefinition =>
-            toCnfFromNumericDefinition(shortDef, colIsNull)
-
-          case intDef: IntColumnDefinition =>
-            toCnfFromNumericDefinition(intDef, colIsNull)
-
-          case longDef: LongColumnDefinition =>
-            toCnfFromNumericDefinition(longDef, colIsNull)
-
-          case decDef: DecimalColumnDefinition =>
-            val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
-
-            when(
-              colIsNull.or(col(decDef.name).cast(decType).isNotNull),
-              lit("")
-            )
-              .otherwise(s"${columnDefinition.name}:D-TYPE")
-
-          case strDef: StringColumnDefinition =>
-            toCnfFromColumns(
-              strDef.minLength.map { value =>
-                when(
-                  colIsNull.or(length(col(strDef.name)).geq(value)),
-                  lit("")
-                )
-                  .otherwise(s"${columnDefinition.name}:MIN")
-              }
-                .getOrElse(lit("")),
-              strDef.maxLength.map { value =>
-                when(
-                  colIsNull.or(length(col(strDef.name)).leq(value)),
-                  lit("")
-                )
-                  .otherwise(s"${columnDefinition.name}:MAX")
-              }
-                .getOrElse(lit("")),
-              strDef.matches.map { regex =>
-                lit(
-                  when(
-                    colIsNull.or(regexp_extract(col(strDef.name), regex, 0).notEqual("")),
-                    lit("")
-                  )
-                    .otherwise(s"${columnDefinition.name}:PATTERN")
-                )
-              }
-                .getOrElse(lit(""))
-            )
-
-          case tsDef: TimestampColumnDefinition =>
-            toCnfFromMaskedDefinition(tsDef, colIsNull)
-
-          case dateDef: DateColumnDefinition =>
-            toCnfFromMaskedDefinition(dateDef, colIsNull)
-
-          case floatDef: FloatColumnDefinition =>
-            toCnfFromNumericDefinition(floatDef, colIsNull)
-
-          case doubleDef: DoubleColumnDefinition =>
-            toCnfFromNumericDefinition(doubleDef, colIsNull)
-
-          case booleanDef: BooleanColumnDefinition =>
-            val colAsBoolean = col(booleanDef.name).cast(BooleanType)
-
-            when(
-              colIsNull.or(colAsBoolean.isNotNull),
-              lit("")
-            )
-              .otherwise(s"${columnDefinition.name}:D-TYPE")
-
-          case _ => lit("")
-        }
-      }
+          .otherwise(lit("")),
+        message
+      ),
+      // we want to reject when it is enabled and it is not valid
+      lit(columnDefinition.shouldReject) and (not(isNullValid) or not(isValid))
     )
   }
 
-  private[this] def toCNF(schema: RowLevelSchema): Column = {
+  private[this] def toCNF(schema: RowLevelSchema): (Column, Column) = {
     val columns =
       schema.columnDefinitions.map(toCnfFromDefinition)
 
-    toCnfFromColumns(columns: _*)
+    (
+      toCnfFromColumns(columns.map(_._1): _*),
+      columns.map(_._2).reduce(_ or _) // if any column is reject true
+    )
   }
 }
