@@ -90,7 +90,9 @@ private[this] case class DecimalColumnDefinition(
 
 private[this] case class FloatColumnDefinition(
                                                 name: String,
-                                                isNullable: Boolean = true)
+                                                isNullable: Boolean = true,
+                                                minValue: Option[Float] = None,
+                                                maxValue: Option[Float] = None)
   extends ColumnDefinition {
 
   override def castExpression(): Column = {
@@ -100,7 +102,9 @@ private[this] case class FloatColumnDefinition(
 
 private[this] case class DoubleColumnDefinition(
                                                  name: String,
-                                                 isNullable: Boolean = true)
+                                                 isNullable: Boolean = true,
+                                                 minValue: Option[Double] = None,
+                                                 maxValue: Option[Double] = None)
   extends ColumnDefinition {
 
   override def castExpression(): Column = {
@@ -232,9 +236,11 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
    */
   def withFloatColumn(
                        name: String,
-                       isNullable: Boolean = true)
+                       isNullable: Boolean = true,
+                       minValue: Option[Float] = None,
+                       maxValue: Option[Float] = None)
   : RowLevelSchema = {
-    RowLevelSchema(columnDefinitions :+ FloatColumnDefinition(name, isNullable))
+    RowLevelSchema(columnDefinitions :+ FloatColumnDefinition(name, isNullable, minValue, maxValue))
   }
 
   /**
@@ -246,9 +252,18 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
    */
   def withDoubleColumn(
                         name: String,
-                        isNullable: Boolean = true)
+                        isNullable: Boolean = true,
+                        minValue: Option[Double] = None,
+                        maxValue: Option[Double] = None)
   : RowLevelSchema = {
-    RowLevelSchema(columnDefinitions :+ DoubleColumnDefinition(name, isNullable))
+    RowLevelSchema(
+      columnDefinitions :+ DoubleColumnDefinition(
+        name,
+        isNullable,
+        minValue,
+        maxValue
+      )
+    )
   }
 
   /**
@@ -541,18 +556,49 @@ object RowLevelSchemaValidator {
             .cast(DateType).isNotNull), lit("\"\""))
             .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
+
         case floatDef: FloatColumnDefinition =>
           /* null or successfully casted */
           val colAsFloat = col(floatDef.name).cast(FloatType)
           nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsFloat.isNotNull), lit("\"\""))
             .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
+
+          floatDef.minValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.isNull.or(colAsFloat.geq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
+          floatDef.maxValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(colAsFloat.leq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
         case doubleDef: DoubleColumnDefinition =>
           /* null or successfully casted */
           val colAsDouble = col(doubleDef.name).cast(DoubleType)
           nextCnf = nextCnf.concat(lit(when(colIsNull.or(colAsDouble.isNotNull), lit("\"\""))
             .otherwise("\"" + columnDefinition.name + ":D-TYPE,\"")).toString())
           nextCnf = nextCnf + ", "
+
+          doubleDef.minValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.isNull.or(colAsDouble.geq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MIN,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
+          doubleDef.maxValue.foreach { value =>
+            nextCnf = nextCnf.concat(
+              lit(when(colIsNull.or(colAsDouble.leq(value)), lit("\"\""))
+                .otherwise("\"" + columnDefinition.name + ":MAX,\"")).toString())
+            nextCnf = nextCnf + ", "
+          }
+
         case booleanDef: BooleanColumnDefinition =>
           /* null or successfully casted */
           val colAsBoolean = col(booleanDef.name).cast(BooleanType)
