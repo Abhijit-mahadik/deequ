@@ -61,6 +61,18 @@ private[this] case class IntColumnDefinition(
   }
 }
 
+private[this] case class LongColumnDefinition(
+                                              name: String,
+                                              isNullable: Boolean = true,
+                                              minValue: Option[Long] = None,
+                                              maxValue: Option[Long] = None)
+  extends NumericColumnDefinition[Long] {
+
+  override def castExpression(): Column = {
+    col(name).cast(LongType).as(name)
+  }
+}
+
 private[this] case class ShortColumnDefinition(
                                               name: String,
                                               isNullable: Boolean = true,
@@ -196,6 +208,25 @@ case class RowLevelSchema(columnDefinitions: Seq[ColumnDefinition] = Seq.empty) 
   : RowLevelSchema = {
 
     RowLevelSchema(columnDefinitions :+ IntColumnDefinition(name, isNullable, minValue, maxValue))
+  }
+
+  /**
+   * Declare an integer column
+   *
+   * @param name       column name
+   * @param isNullable are NULL values permitted?
+   * @param minValue   minimum value
+   * @param maxValue   maximum value
+   * @return
+   */
+  def withLongColumn(
+                     name: String,
+                     isNullable: Boolean = true,
+                     minValue: Option[Long] = None,
+                     maxValue: Option[Long] = None)
+  : RowLevelSchema = {
+
+    RowLevelSchema(columnDefinitions :+ LongColumnDefinition(name, isNullable, minValue, maxValue))
   }
 
   /**
@@ -426,13 +457,10 @@ object RowLevelSchemaValidator {
 
   private[this] def toCnfFromMaskedDefinition(
                      colDef: MaskColumnDefinition,
-                     colIsNull: Column,
-                     targetType: DataType,
-                     parser: (Column, String) => Column): Column = {
+                     colIsNull: Column): Column = {
     when(
       colIsNull.or(
-        parser(col(colDef.name), colDef.mask)
-          .cast(targetType).isNotNull
+        colDef.castExpression().isNotNull
       ),
       lit("")
     )
@@ -456,8 +484,8 @@ object RowLevelSchemaValidator {
 
   private[this] def toCnfFromNumericDefinition(
                      colDef: NumericColumnDefinition[_],
-                     colIsNull: Column,
-                     typedColumn: Column): Column = {
+                     colIsNull: Column): Column = {
+    val typedColumn = colDef.castExpression()
     toCnfFromColumns(
       when(
         colIsNull.or(typedColumn.isNotNull),
@@ -497,13 +525,16 @@ object RowLevelSchemaValidator {
         val colIsNull = col(columnDefinition.name).isNull
         columnDefinition match {
           case byteDef: ByteColumnDefinition =>
-            toCnfFromNumericDefinition(byteDef, colIsNull, col(byteDef.name).cast(ByteType))
+            toCnfFromNumericDefinition(byteDef, colIsNull)
 
           case shortDef: ShortColumnDefinition =>
-            toCnfFromNumericDefinition(shortDef, colIsNull, col(shortDef.name).cast(ShortType))
+            toCnfFromNumericDefinition(shortDef, colIsNull)
 
           case intDef: IntColumnDefinition =>
-            toCnfFromNumericDefinition(intDef, colIsNull, col(intDef.name).cast(IntegerType))
+            toCnfFromNumericDefinition(intDef, colIsNull)
+
+          case longDef: LongColumnDefinition =>
+            toCnfFromNumericDefinition(longDef, colIsNull)
 
           case decDef: DecimalColumnDefinition =>
             val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
@@ -545,18 +576,16 @@ object RowLevelSchemaValidator {
             )
 
           case tsDef: TimestampColumnDefinition =>
-            val parser: (Column, String) => Column = unix_timestamp
-            toCnfFromMaskedDefinition(tsDef, colIsNull, TimestampType, parser)
+            toCnfFromMaskedDefinition(tsDef, colIsNull)
 
           case dateDef: DateColumnDefinition =>
-            val parser: (Column, String) => Column = to_date
-            toCnfFromMaskedDefinition(dateDef, colIsNull, DateType, parser)
+            toCnfFromMaskedDefinition(dateDef, colIsNull)
 
           case floatDef: FloatColumnDefinition =>
-            toCnfFromNumericDefinition(floatDef, colIsNull, col(floatDef.name).cast(FloatType))
+            toCnfFromNumericDefinition(floatDef, colIsNull)
 
           case doubleDef: DoubleColumnDefinition =>
-            toCnfFromNumericDefinition(doubleDef, colIsNull, col(doubleDef.name).cast(DoubleType))
+            toCnfFromNumericDefinition(doubleDef, colIsNull)
 
           case booleanDef: BooleanColumnDefinition =>
             val colAsBoolean = col(booleanDef.name).cast(BooleanType)
