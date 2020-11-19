@@ -374,5 +374,32 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
 
       assert(result.numInvalidRows == 5)
     }
+
+    "keep validation information columns" in withSparkSession { sparkSession =>
+
+      import sparkSession.implicits._
+
+      val data = Seq(
+        ("123", "Product A", "2012-07-22 22:59:59"),
+        ("N/A", "Product B", null),
+        (null, "Product C", null),
+        ("456", "Product D, a must buy", "2012-07-22 22:59:59"),
+        ("789", "Product D, another must buy", "2012-07-22 22:59:59"),
+        ("101", "Product E", "2012-07-22 22:59:59"),
+        ("103", "Product F", "yesterday morning")
+      ).toDF("id", "name", "event_time")
+
+      val schema = RowLevelSchema()
+        .withIntColumn("id", isNullable = false)
+        .withStringColumn("name", maxLength = Some(10))
+        .withTimestampColumn("event_time", mask = "yyyy-MM-dd HH:mm:ss")
+
+
+      val result = RowLevelSchemaValidator.validate(data, schema, keepValidationColumns = true)
+      val fieldsByName = result.validRows.schema.fields.map { field => field.name -> field }.toMap
+
+      /* Ensure that the data was casted correctly */
+      assert(fieldsByName.size == 6)
+    }
   }
 }

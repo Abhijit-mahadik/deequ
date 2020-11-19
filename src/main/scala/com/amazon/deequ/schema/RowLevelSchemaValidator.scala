@@ -481,6 +481,7 @@ object RowLevelSchemaValidator {
 
   private[this] val MATCHES_COLUMN = "validation_error"
   private[this] val SHOULD_REJECT = "should_reject"
+  private[this] val IS_VALID = "is_valid"
 
   /**
    * Enforces a schema on textual data, filters out non-conforming columns and casts the result
@@ -495,17 +496,19 @@ object RowLevelSchemaValidator {
   def validate(
                 data: DataFrame,
                 schema: RowLevelSchema,
-                storageLevelForIntermediateResults: StorageLevel = StorageLevel.MEMORY_AND_DISK
+                storageLevelForIntermediateResults: StorageLevel = StorageLevel.MEMORY_AND_DISK,
+                keepValidationColumns: Boolean = false
               ): RowLevelSchemaValidationResult = {
 
-    val (message, valid) = toCNF(schema)
+    val (message, valid, shouldReject) = toCNF(schema)
     val dataWithMatches = data
       .withColumn(MATCHES_COLUMN, message)
-      .withColumn(SHOULD_REJECT, valid)
+      .withColumn(IS_VALID, valid)
+      .withColumn(SHOULD_REJECT, shouldReject)
 
     dataWithMatches.persist(storageLevelForIntermediateResults)
 
-    val validRows = extractAndCastValidRows(dataWithMatches, schema)
+    val validRows = extractAndCastValidRows(dataWithMatches, schema, keepValidationColumns)
     val numValidRows = validRows.count()
 
     dataWithMatches.show(false)
@@ -523,21 +526,30 @@ object RowLevelSchemaValidator {
 
   private[this] def extractAndCastValidRows(
                                              dataWithMatches: DataFrame,
-                                             schema: RowLevelSchema)
+                                             schema: RowLevelSchema,
+                                             keepValidationColumns: Boolean)
   : DataFrame = {
 
     val castExpressions = schema.columnDefinitions
       .map { colDef => colDef.name -> colDef.castExpression() }
       .toMap
+    val projection = {
+      val projectionNames = dataWithMatches.schema
+        .map {
+          _.name
+        }
+      val projectionNamesFilteredForInternalColumns =
+        if(keepValidationColumns) {
+          projectionNames
+        } else {
+          projectionNames.filter{
+            column => column != MATCHES_COLUMN && column != SHOULD_REJECT && column != IS_VALID
+          }
+        }
 
-    val projection = dataWithMatches.schema
-      .map {
-        _.name
-      }
-      .filter {
-        column => column != MATCHES_COLUMN && column != SHOULD_REJECT
-      }
-      .map { name => castExpressions.getOrElse(name, col(name)) }
+      projectionNamesFilteredForInternalColumns
+        .map { name => castExpressions.getOrElse(name, col(name)) }
+    }
 
     dataWithMatches.select(projection: _*).where(col(SHOULD_REJECT) === lit(false))
   }
@@ -612,7 +624,7 @@ object RowLevelSchemaValidator {
     )
   }
 
-  private[this] def toCnfFromDefinition(columnDefinition: ColumnDefinition): (Column, Column) = {
+  private[this] def toCnfFromDefinition(columnDefinition: ColumnDefinition): (Column, Column, Column) = {
     val (message, isValid): (Column, Column) = {
       val colIsNull = col(columnDefinition.name).isNull
       columnDefinition match {
@@ -723,18 +735,19 @@ object RowLevelSchemaValidator {
           .otherwise(lit("")),
         message
       ),
-      // we want to reject when it is enabled and it is not valid
+      isNullValid and isValid,
       lit(columnDefinition.shouldReject) and (not(isNullValid) or not(isValid))
     )
   }
 
-  private[this] def toCNF(schema: RowLevelSchema): (Column, Column) = {
+  private[this] def toCNF(schema: RowLevelSchema): (Column, Column, Column) = {
     val columns =
       schema.columnDefinitions.map(toCnfFromDefinition)
 
     (
       toCnfFromColumns(columns.map(_._1): _*),
-      columns.map(_._2).reduce(_ or _) // if any column is reject true
+      columns.map(_._2).reduce(_ or _), // if any column is reject true
+      columns.map(_._3).reduce(_ or _)
     )
   }
 }
