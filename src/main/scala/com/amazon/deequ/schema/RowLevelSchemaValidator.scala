@@ -539,7 +539,7 @@ object RowLevelSchemaValidator {
           _.name
         }
       val projectionNamesFilteredForInternalColumns =
-        if(keepValidationColumns) {
+        if (keepValidationColumns) {
           projectionNames
         } else {
           projectionNames.filter{
@@ -624,7 +624,13 @@ object RowLevelSchemaValidator {
     )
   }
 
-  private[this] def toCnfFromDefinition(columnDefinition: ColumnDefinition): (Column, Column, Column) = {
+  /**
+   * @param columnDefinition
+   * @return a triplet of columns: (validationMessage, isValid, shouldReject)
+   */
+  private[this] def toCnfFromDefinition(
+                                         columnDefinition: ColumnDefinition
+                                       ): (Column, Column, Column) = {
     val (message, isValid): (Column, Column) = {
       val colIsNull = col(columnDefinition.name).isNull
       columnDefinition match {
