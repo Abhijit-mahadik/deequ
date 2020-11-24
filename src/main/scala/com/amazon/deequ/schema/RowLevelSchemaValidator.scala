@@ -511,7 +511,6 @@ object RowLevelSchemaValidator {
     val validRows = extractAndCastValidRows(dataWithMatches, schema, keepValidationColumns)
     val numValidRows = validRows.count()
 
-    dataWithMatches.show(false)
     val invalidRows = dataWithMatches
       .where(col(SHOULD_REJECT) === lit(true))
 
