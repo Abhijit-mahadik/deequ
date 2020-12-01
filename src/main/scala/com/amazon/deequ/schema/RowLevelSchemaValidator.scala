@@ -565,7 +565,7 @@ object RowLevelSchemaValidator {
         ),
         lit("")
       )
-        .otherwise(concat(lit(colDef.name),lit(":D-TYPE|Found:"),  col(colDef.name),lit(" "))),
+        .otherwise(concat(lit(colDef.name),lit(":D-TYPE:"),  col(colDef.name),lit(";"))),
       hasCorrectType
     )
   }
@@ -607,17 +607,17 @@ object RowLevelSchemaValidator {
           hasCorrectType,
           lit("")
         )
-          .otherwise(concat( lit(colDef.name),lit(":D-TYPE|Found:"),  col(colDef.name), lit(" "))),
+          .otherwise(concat( lit(colDef.name),lit(":D-TYPE:"),  col(colDef.name), lit(";"))),
         when(
           hasCorrectMinValue,
           lit("")
         )
-          .otherwise(s"${colDef.name}:MIN "),
+          .otherwise(s"${colDef.name}:MIN;"),
         when(
           hasCorrectMaxValue,
           lit("")
         )
-          .otherwise(s"${colDef.name}:MAX ")
+          .otherwise(s"${colDef.name}:MAX;")
       ),
       hasCorrectType and hasCorrectMaxValue and hasCorrectMinValue
     )
@@ -654,7 +654,7 @@ object RowLevelSchemaValidator {
               hasCorrectDataType,
               lit("")
             )
-              .otherwise(concat( lit(columnDefinition.name),lit(":D-TYPE|Found:"),  col(columnDefinition.name), lit(" "))),
+              .otherwise(concat( lit(columnDefinition.name),lit(":D-TYPE:"),  col(columnDefinition.name), lit(";"))),
             hasCorrectDataType
           )
 
@@ -681,17 +681,17 @@ object RowLevelSchemaValidator {
                 hasCorrectMinLength,
                 lit("")
               )
-                .otherwise(s"${columnDefinition.name}:MIN "),
+                .otherwise(s"${columnDefinition.name}:MIN;"),
               when(
                 hasCorrectMaxLength,
                 lit("")
               )
-                .otherwise(s"${columnDefinition.name}:MAX "),
+                .otherwise(s"${columnDefinition.name}:MAX;"),
               when(
                 matches,
                 lit("")
               )
-                .otherwise(s"${columnDefinition.name}:PATTERN ")
+                .otherwise(s"${columnDefinition.name}:PATTERN;")
             ),
             hasCorrectMaxLength and hasCorrectMinLength and matches
           )
@@ -713,11 +713,11 @@ object RowLevelSchemaValidator {
           val hasCorrectType = colIsNull.or(colAsBoolean.isNotNull)
 
           (
-              when(
+            when(
               hasCorrectType,
               lit("")
             )
-              .otherwise(concat( lit(columnDefinition.name),lit(":D-TYPE|Found:"),  col(columnDefinition.name), lit(" "))),
+              .otherwise(concat(lit(columnDefinition.name), lit(":D-TYPE:"), col(columnDefinition.name), lit(";"))),
             hasCorrectType
           )
 
@@ -735,7 +735,7 @@ object RowLevelSchemaValidator {
       toCnfFromColumns(
         when(
           not(isNullValid),
-          lit(s"${columnDefinition.name}:NULL ")
+          lit(s"${columnDefinition.name}:NULL;")
         )
           .otherwise(lit("")),
         message
