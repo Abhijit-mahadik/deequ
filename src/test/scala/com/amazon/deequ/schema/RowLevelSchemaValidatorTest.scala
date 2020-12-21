@@ -32,7 +32,7 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
         ("123", "Product A", "2012-07-22 22:59:59"),
         ("N/A", "Product B", null),
         ("456", null, "2012-07-22 22:59:59"),
-        (null, "Product C", "1231234213")
+        ("12", "Product C", "1231234213")
       ).toDF("id", "name", "event_time")
 
       val schema = RowLevelSchema()
@@ -40,7 +40,7 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
         .withStringColumn("name", maxLength = Some(10))
         .withTimestampColumn("event_time", mask = "yyyy-MM-dd HH:mm:ss", isNullable = false)
 
-      val result = RowLevelSchemaValidator.validate(data, schema)
+      val result = RowLevelSchemaValidator.validate(data, schema,keepValidationColumns = true)
 
       result.invalidRows.show(false)
       result.validRows.show(false)

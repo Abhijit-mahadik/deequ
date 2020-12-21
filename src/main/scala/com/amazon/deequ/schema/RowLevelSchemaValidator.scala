@@ -506,7 +506,7 @@ object RowLevelSchemaValidator {
       .withColumn(IS_VALID, valid)
       .withColumn(SHOULD_REJECT, shouldReject)
 
-    dataWithMatches.persist(storageLevelForIntermediateResults)
+      dataWithMatches.persist(storageLevelForIntermediateResults)
 
     val validRows = extractAndCastValidRows(dataWithMatches, schema, keepValidationColumns)
     val numValidRows = validRows.count()
@@ -751,7 +751,7 @@ object RowLevelSchemaValidator {
 
     (
       toCnfFromColumns(columns.map(_._1): _*),
-      columns.map(_._2).reduce(_ or _), // if any column is reject true
+      columns.map(_._2).reduce(_ and _), // if any column is reject true
       columns.map(_._3).reduce(_ or _)
     )
   }
