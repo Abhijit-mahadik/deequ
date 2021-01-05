@@ -40,7 +40,7 @@ class RowLevelSchemaValidatorTest extends WordSpec with SparkContextSpec {
         .withStringColumn("name", maxLength = Some(10))
         .withTimestampColumn("event_time", mask = "yyyy-MM-dd HH:mm:ss", isNullable = false)
 
-      val result = RowLevelSchemaValidator.validate(data, schema,keepValidationColumns = true)
+      val result = RowLevelSchemaValidator.validate(data, schema, keepValidationColumns = true)
 
       result.invalidRows.show(false)
       result.validRows.show(false)

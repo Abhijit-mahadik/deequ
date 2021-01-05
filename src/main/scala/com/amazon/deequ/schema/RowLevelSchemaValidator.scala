@@ -565,7 +565,7 @@ object RowLevelSchemaValidator {
         ),
         lit("")
       )
-        .otherwise(concat(lit(colDef.name),lit(":D-TYPE:"),  col(colDef.name),lit(";"))),
+        .otherwise(concat(lit(colDef.name), lit(":D-TYPE:"), col(colDef.name), lit(";"))),
       hasCorrectType
     )
   }
@@ -592,22 +592,29 @@ object RowLevelSchemaValidator {
     val hasCorrectType = colIsNull.or(typedColumn.isNotNull)
     val hasCorrectMinValue =
     colDef.minValue.map { value =>
-      colIsNull.isNull.or(typedColumn.geq(value))
+      colIsNull.isNull or colIsNull.isNotNull.and(typedColumn.geq(value))
     }
       .getOrElse(lit(true))
     val hasCorrectMaxValue =
       colDef.maxValue.map { value =>
-        colIsNull.or(typedColumn.leq(value))
+        colIsNull.isNull or colIsNull.isNotNull.and(typedColumn.leq(value))
       }
         .getOrElse(lit(true))
+    val hasCorrectNullable = (lit(colDef.isNullable) and colIsNull.isNull) or
+      (lit(!colDef.isNullable) and colIsNull.isNotNull)
 
     (
       toCnfFromColumns(
         when(
+          hasCorrectNullable,
+          lit("")
+        )
+          .otherwise(concat(lit(colDef.name), lit(":NULL;"))),
+        when(
           hasCorrectType,
           lit("")
         )
-          .otherwise(concat( lit(colDef.name),lit(":D-TYPE:"),  col(colDef.name), lit(";"))),
+          .otherwise(concat(lit(colDef.name), lit(":D-TYPE:"), col(colDef.name), lit(";"))),
         when(
           hasCorrectMinValue,
           lit("")
@@ -619,7 +626,7 @@ object RowLevelSchemaValidator {
         )
           .otherwise(s"${colDef.name}:MAX;")
       ),
-      hasCorrectType and hasCorrectMaxValue and hasCorrectMinValue
+      hasCorrectNullable and hasCorrectType and hasCorrectMaxValue and hasCorrectMinValue
     )
   }
 
@@ -654,7 +661,14 @@ object RowLevelSchemaValidator {
               hasCorrectDataType,
               lit("")
             )
-              .otherwise(concat( lit(columnDefinition.name),lit(":D-TYPE:"),  col(columnDefinition.name), lit(";"))),
+              .otherwise(
+                concat(
+                  lit(columnDefinition.name),
+                  lit(":D-TYPE:"),
+                  col(columnDefinition.name),
+                  lit(";")
+                )
+              ),
             hasCorrectDataType
           )
 
@@ -717,7 +731,14 @@ object RowLevelSchemaValidator {
               hasCorrectType,
               lit("")
             )
-              .otherwise(concat(lit(columnDefinition.name), lit(":D-TYPE:"), col(columnDefinition.name), lit(";"))),
+              .otherwise(
+                concat(
+                  lit(columnDefinition.name),
+                  lit(":D-TYPE:"),
+                  col(columnDefinition.name),
+                  lit(";")
+                )
+              ),
             hasCorrectType
           )
 
