@@ -557,16 +557,30 @@ object RowLevelSchemaValidator {
                      colDef: MaskColumnDefinition,
                      colIsNull: Column): (Column, Column) = {
     val hasCorrectType = colDef.castExpression().isNotNull
+    val hasCorrectNullable = lit(colDef.isNullable) and colIsNull
 
     (
-      when(
-        colIsNull.or(
-          hasCorrectType
-        ),
-        lit("")
-      )
-        .otherwise(concat(lit(colDef.name), lit(":D-TYPE:"), col(colDef.name), lit(";"))),
-      hasCorrectType
+    when(
+      hasCorrectNullable,
+      lit("")
+    )
+      .otherwise(
+        when(
+          colIsNull,
+          lit(concat(lit(colDef.name), lit(":NULL;")))
+        )
+          .otherwise(
+            when(
+              colIsNull.or(
+                hasCorrectType
+              ),
+              lit("")
+            )
+              .otherwise(concat(lit(colDef.name), lit(":D-TYPE:"), col(colDef.name), lit(";")))
+          )
+
+      ),
+      hasCorrectNullable or (!colIsNull and hasCorrectType)
     )
   }
 
@@ -600,33 +614,39 @@ object RowLevelSchemaValidator {
         colIsNull.isNull or colIsNull.isNotNull.and(typedColumn.leq(value))
       }
         .getOrElse(lit(true))
-    val hasCorrectNullable = (lit(colDef.isNullable) and colIsNull.isNull) or
-      (lit(!colDef.isNullable) and colIsNull.isNotNull)
+    val hasCorrectNullable = lit(colDef.isNullable) and colIsNull
 
     (
-      toCnfFromColumns(
-        when(
-          hasCorrectNullable,
-          lit("")
-        )
-          .otherwise(concat(lit(colDef.name), lit(":NULL;"))),
-        when(
-          hasCorrectType,
-          lit("")
-        )
-          .otherwise(concat(lit(colDef.name), lit(":D-TYPE:"), col(colDef.name), lit(";"))),
-        when(
-          hasCorrectMinValue,
-          lit("")
-        )
-          .otherwise(s"${colDef.name}:MIN;"),
-        when(
-          hasCorrectMaxValue,
-          lit("")
-        )
-          .otherwise(s"${colDef.name}:MAX;")
-      ),
-      hasCorrectNullable and hasCorrectType and hasCorrectMaxValue and hasCorrectMinValue
+      when(
+        hasCorrectNullable,
+        lit("")
+      )
+        .otherwise(
+          when(
+            colIsNull,
+            lit(concat(lit(colDef.name), lit(":NULL;")))
+          )
+            .otherwise(
+              toCnfFromColumns(
+                when(
+                  hasCorrectType,
+                  lit("")
+                )
+                  .otherwise(concat(lit(colDef.name), lit(":D-TYPE:"), col(colDef.name), lit(";"))),
+                when(
+                  hasCorrectMinValue,
+                  lit("")
+                )
+                  .otherwise(s"${colDef.name}:MIN;"),
+                when(
+                  hasCorrectMaxValue,
+                  lit("")
+                )
+                  .otherwise(s"${colDef.name}:MAX;")
+              )
+            )
+        ),
+      hasCorrectNullable or (!colIsNull and hasCorrectType and hasCorrectMaxValue and hasCorrectMinValue)
     )
   }
 
@@ -655,21 +675,36 @@ object RowLevelSchemaValidator {
         case decDef: DecimalColumnDefinition =>
           val decType = DataTypes.createDecimalType(decDef.precision, decDef.scale)
           val hasCorrectDataType = colIsNull.or(col(decDef.name).cast(decType).isNotNull)
+          val hasCorrectNullable = lit(decDef.isNullable) and colIsNull
 
           (
             when(
-              hasCorrectDataType,
+              hasCorrectNullable,
               lit("")
             )
               .otherwise(
-                concat(
-                  lit(columnDefinition.name),
-                  lit(":D-TYPE:"),
-                  col(columnDefinition.name),
-                  lit(";")
+                when(
+                  colIsNull,
+                  lit(concat(lit(decDef.name), lit(":NULL;")))
                 )
+                  .otherwise(
+                    toCnfFromColumns(
+                      when(
+                        hasCorrectDataType,
+                        lit("")
+                      )
+                        .otherwise(
+                          concat(
+                            lit(columnDefinition.name),
+                            lit(":D-TYPE:"),
+                            col(columnDefinition.name),
+                            lit(";")
+                          )
+                        )
+                    )
+                  )
               ),
-            hasCorrectDataType
+            hasCorrectNullable or (!colIsNull and hasCorrectDataType)
           )
 
         case strDef: StringColumnDefinition =>
@@ -688,26 +723,39 @@ object RowLevelSchemaValidator {
               colIsNull.or(regexp_extract(col(strDef.name), regex, 0).notEqual(""))
             }
               .getOrElse(lit(true))
+          val hasCorrectNullable = lit(strDef.isNullable) and colIsNull
 
           (
-            toCnfFromColumns(
-              when(
-                hasCorrectMinLength,
-                lit("")
-              )
-                .otherwise(s"${columnDefinition.name}:MIN;"),
-              when(
-                hasCorrectMaxLength,
-                lit("")
-              )
-                .otherwise(s"${columnDefinition.name}:MAX;"),
-              when(
-                matches,
-                lit("")
-              )
-                .otherwise(s"${columnDefinition.name}:PATTERN;")
-            ),
-            hasCorrectMaxLength and hasCorrectMinLength and matches
+            when(
+              hasCorrectNullable,
+              lit("")
+            )
+              .otherwise(
+                when(
+                  colIsNull,
+                  lit(concat(lit(strDef.name), lit(":NULL;")))
+                )
+                  .otherwise(
+                    toCnfFromColumns(
+                      when(
+                        hasCorrectMinLength,
+                        lit("")
+                      )
+                        .otherwise(s"${columnDefinition.name}:MIN;"),
+                      when(
+                        hasCorrectMaxLength,
+                        lit("")
+                      )
+                        .otherwise(s"${columnDefinition.name}:MAX;"),
+                      when(
+                        matches,
+                        lit("")
+                      )
+                        .otherwise(s"${columnDefinition.name}:PATTERN;")
+                    )
+                  )
+              ),
+            hasCorrectNullable or (!colIsNull and hasCorrectMaxLength and hasCorrectMinLength and matches)
           )
 
         case tsDef: TimestampColumnDefinition =>
@@ -725,44 +773,44 @@ object RowLevelSchemaValidator {
         case booleanDef: BooleanColumnDefinition =>
           val colAsBoolean = col(booleanDef.name).cast(BooleanType)
           val hasCorrectType = colIsNull.or(colAsBoolean.isNotNull)
+          val hasCorrectNullable = lit(booleanDef.isNullable) and colIsNull
 
           (
             when(
-              hasCorrectType,
+              hasCorrectNullable,
               lit("")
             )
               .otherwise(
-                concat(
-                  lit(columnDefinition.name),
-                  lit(":D-TYPE:"),
-                  col(columnDefinition.name),
-                  lit(";")
+                when(
+                  colIsNull,
+                  lit(concat(lit(booleanDef.name), lit(":NULL;")))
                 )
+                  .otherwise(
+                    when(
+                      hasCorrectType,
+                      lit("")
+                    )
+                      .otherwise(
+                        concat(
+                          lit(columnDefinition.name),
+                          lit(":D-TYPE:"),
+                          col(columnDefinition.name),
+                          lit(";")
+                        )
+                      )
+                  )
               ),
-            hasCorrectType
+            hasCorrectNullable or (!colIsNull and hasCorrectType)
           )
 
         case _ => (lit(""), lit(true))
       }
     }
-    val isNullValid =
-      (lit(columnDefinition.isNullable) and col(columnDefinition.name).isNull) or (
-        lit(columnDefinition.isNullable) and col(columnDefinition.name).isNotNull
-      ) or (
-        lit(!columnDefinition.isNullable) and col(columnDefinition.name).isNotNull
-      )
 
     (
-      toCnfFromColumns(
-        when(
-          not(isNullValid),
-          lit(s"${columnDefinition.name}:NULL;")
-        )
-          .otherwise(lit("")),
-        message
-      ),
-      isNullValid and isValid,
-      lit(columnDefinition.shouldReject) and (not(isNullValid) or not(isValid))
+      message,
+      isValid,
+      lit(columnDefinition.shouldReject) and !isValid
     )
   }
 
